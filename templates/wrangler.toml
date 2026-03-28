@@ -1,0 +1,8 @@
+name = "__SITE_NAME__"
+main = "src/worker.ts"
+compatibility_date = "2026-03-28"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "dist/client"
+binding = "ASSETS"
