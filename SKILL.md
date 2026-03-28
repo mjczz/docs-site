@@ -1,3 +1,8 @@
+---
+name: docs-site
+description: Scaffold a GitHub-styled TanStack Start documentation site for project analysis documents. Supports single-project and multi-project hub modes.
+---
+
 # Docs Site Skill
 
 Scaffold a GitHub-styled TanStack Start documentation site for project analysis documents. Supports two modes: **single project** and **multi-project hub**.
