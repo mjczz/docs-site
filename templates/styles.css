@@ -163,6 +163,9 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   color: var(--fg-muted);
   text-decoration: none;
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: background 80ms ease, color 80ms ease;
 }
 .sidebar-link:hover {
@@ -182,6 +185,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   min-width: 0;
   padding: 40px 64px 80px;
   max-width: 1440px;
+
 }
 
 /* ── Prose (GitHub markdown rendering) ── */
@@ -501,6 +505,10 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  transition: border-color 0.15s;
+}
+.mermaid-outer:hover {
+  border-color: var(--accent);
 }
 
 .mermaid-toolbar {
@@ -508,7 +516,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background: var(--bg-canvas);
+  background: var(--bg-inset);
   border-bottom: 1px solid var(--border);
   user-select: none;
 }
@@ -527,15 +535,15 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   font-weight: 600;
   cursor: pointer;
   line-height: 1;
-  transition: background 0.15s, border-color 0.15s;
+  transition: border-color 0.15s, color 0.15s;
 }
 .mermaid-toolbar button:hover {
-  background: var(--hover-bg);
   border-color: var(--accent);
+  color: var(--accent);
 }
 
 .mermaid-zoom-label {
-  min-width: 48px;
+  min-width: 44px;
   text-align: center;
   font-size: 12px;
   color: var(--fg-muted);
@@ -546,14 +554,95 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   color: var(--accent);
 }
 
+.mermaid-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
 .mermaid-viewport {
   overflow: auto;
   background: var(--bg-canvas);
+  cursor: zoom-in;
 }
 
 .mermaid-wrap {
   padding: 16px;
   background: var(--bg-canvas);
+}
+
+/* ── Mermaid fullscreen overlay ── */
+.mermaid-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  flex-direction: column;
+  animation: mermaid-fade-in 0.15s ease;
+}
+@keyframes mermaid-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mermaid-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: relative;
+}
+.mermaid-close-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  color: var(--fg);
+  font-size: 20px;
+  font-weight: 300;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.mermaid-close-btn:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.mermaid-zoom-label {
+  font-size: 13px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.mermaid-zoom-label:hover {
+  color: var(--accent);
+}
+
+.mermaid-overlay-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+
+.mermaid-overlay-img {
+  max-width: none;
+  max-height: none;
+  padding: 32px;
   transition: transform 0.1s ease;
 }
 
