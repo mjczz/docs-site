@@ -21,6 +21,44 @@ Use this skill when the user:
 
 - bun must be available on the system
 
+## Site Existence Guard (MANDATORY)
+
+Before any scaffold or creation step, check if the target directory already contains a `site/` subdirectory:
+
+```bash
+test -d {target}/site && echo "EXISTS" || echo "NOT_EXISTS"
+```
+
+### Rule
+
+| Condition | Action |
+|---|---|
+| `site/` does **NOT** exist | Proceed with normal creation workflow |
+| `site/` exists **AND** `site/package.json` contains `"docs-site-skill": true` in a custom field (or a `.docs-site-skill` marker file exists in `site/`) | This is **our** site — enter **Update Mode** (see "Existing Site Update Mode" below) |
+| `site/` exists **AND** no marker found | **STOP** — the target already has a site that was NOT created by this skill. Report error and abort. Do NOT overwrite. |
+
+### Error message when site exists but is not ours
+
+```
+ERROR: A "site/" directory already exists in the target project.
+This site was not created by the docs-site skill and will NOT be overwritten.
+
+If you want to replace it, please remove the existing site/ directory first:
+  rm -rf {target}/site
+
+Then re-run /docs-site.
+```
+
+### Marker convention
+
+When this skill creates a new site, it MUST write a marker file `site/.docs-site-skill` containing:
+
+```
+This site was scaffolded by the docs-site skill.
+```
+
+This allows future runs to distinguish our sites from pre-existing ones.
+
 ## Mode Detection
 
 The skill automatically detects which mode to use:
@@ -99,9 +137,9 @@ This ensures the user has a chance to review and adjust before the site is gener
 
 ### Existing Site Update Mode
 
-When the user runs `/docs-site` on a target directory that **already has a `site/` directory**, enter **update mode** instead of re-scaffolding from scratch.
+When the user runs `/docs-site` on a target directory that **already has a `site/` directory with the `.docs-site-skill` marker**, enter **update mode** instead of re-scaffolding from scratch.
 
-**Detection**: Check if `{target}/site/package.json` exists. If yes → update mode.
+**Detection**: Check if `{target}/site/.docs-site-skill` exists. If yes → update mode. If `site/` exists but no marker → see "Site Existence Guard" error and abort.
 
 **What update mode does**:
 
@@ -143,6 +181,8 @@ When the user runs `/docs-site` on a target directory that **already has a `site
 
 ### S1. Discover & Normalize
 
+0. **Run the Site Existence Guard** (see "Site Existence Guard" section above). If `site/` already exists without our marker, report error and stop. If `site/` exists with our marker, enter Update Mode. Only proceed with the steps below if no `site/` exists.
+
 1. Locate the analysis directory. If not found, report error and stop
 2. **Normalize directory structure** — check if `topics/` exists:
    - If `topics/` does NOT exist:
@@ -169,7 +209,9 @@ The Cloudflare deployment configuration is the same for both modes — see steps
 
 ## Workflow: Multi-Project Hub Mode
 
-### M1. Scan & Normalize All Projects
+### M1. Site Existence Check & Scan
+
+0. **Run the Site Existence Guard** (see "Site Existence Guard" section above). If `site/` already exists without our marker, report error and stop. If `site/` exists with our marker, enter Update Mode. Only proceed with the steps below if no `site/` exists.
 
 1. List all subdirectories in the target path. Apply the **Exclusion Rules** from the Arguments section (always-skip dirs, `--only`/`--exclude` flags, minimum content threshold)
 2. For each project directory that passes filtering:
@@ -201,6 +243,10 @@ Then:
 2. **Remove any `.git` directory created by the scaffold** — the target directory (e.g. `~/ai/code-analysi/`) is already a git repository. A nested `.git` would create a submodule conflict:
    ```bash
    rm -rf site/.git
+   ```
+3. **Write the marker file** to identify this site as created by the docs-site skill:
+   ```bash
+   echo "This site was scaffolded by the docs-site skill." > site/.docs-site-skill
    ```
 
 ### M3. Install Dependencies
