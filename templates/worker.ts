@@ -16,5 +16,5 @@ export default {
 } satisfies ExportedHandler<{ ASSETS: Fetcher }>
 
 function isStaticAsset(pathname: string): boolean {
-  return /\.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|json|webmanifest|txt|xml|map)$/i.test(pathname)
+  return /\.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|json|webmanifest|txt|xml|map|md)$/i.test(pathname)
 }

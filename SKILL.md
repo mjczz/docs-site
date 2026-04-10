@@ -288,11 +288,15 @@ src/
 
 This file is **generated dynamically** and is the core of the hub. For each project and each `.md` file within it, generate:
 
-1. Import statements using Vite `?raw` suffix, with paths relative to `site/src/lib/`:
+1. Import statements using Vite `?url` suffix (NOT `?raw` — `?raw` embeds full file content and causes Cloudflare Worker bundle to exceed 3 MiB limit), with paths relative to `site/src/lib/`:
    ```
-   import proj_tokio_topic_01 from '../../tokio/topics/01-overview.md?raw'
+   import proj_tokio_topic_01 from '../../tokio/topics/01-overview.md?url'
    ```
-2. A nested data structure:
+   `?url` returns only the asset URL string (~50 bytes) instead of the full file content (~10-50 KB). Markdown content is loaded at runtime via `useTopicContent` hook.
+
+2. Extract titles at generation time by reading each `.md` file's H1 heading. Titles are hardcoded in the registry — NOT extracted at runtime.
+
+3. A nested data structure with `url` field (NOT `content`):
 
 **Slug uniqueness rule**: Every topic slug within a project MUST be unique and non-empty. Slug is derived from the filename (without `.md`). If two files in the same project would produce the same slug (e.g. `MongoDB.md` and another `MongoDB.md`, or filenames that normalize to the same string), append a distinguishing suffix based on the title or order number (e.g. `MongoDB-sharding`, `MongoDB-multi-server`). Empty slugs (from files with no meaningful name) must be given a descriptive slug derived from the title. This is critical because:
 - `getTopic()` uses `.find()` by slug — duplicate slugs make some pages inaccessible
@@ -304,7 +308,7 @@ export interface TopicMeta {
   title: string
   category: 'core' | 'deep-dive' | 'other'
   order: number
-  content: string
+  url: string
 }
 
 export interface ProjectMeta {
@@ -349,6 +353,9 @@ All templates for multi-project mode are in `~/.claude/skills/docs-site/template
 
 These are shared with single-project mode — copy from `templates/`:
 - `styles.css`, `header.tsx`, `footer.tsx`, `markdown-renderer.tsx`, `mermaid-block.tsx`, `theme-toggle.tsx`
+
+Additionally, copy the async content loading hook to `site/src/hooks/`:
+- `use-topic-content.ts` → `site/src/hooks/useTopicContent.ts`
 
 ### M8. Configure Cloudflare Workers Deployment
 
@@ -397,7 +404,7 @@ export default {
 } satisfies ExportedHandler<{ ASSETS: Fetcher }>
 
 function isStaticAsset(pathname: string): boolean {
-  return /\.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|json|webmanifest|txt|xml|map)$/i.test(pathname)
+  return /\.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|json|webmanifest|txt|xml|map|md)$/i.test(pathname)
 }
 ```
 
@@ -414,7 +421,7 @@ Add to `scripts`:
 
 #### M8e. Update `vite.config.ts`
 
-Ensure `server.fs.allow` includes parent directory (for `?raw` imports):
+Ensure `server.fs.allow` includes parent directory (for `?url` imports to resolve sibling project directories):
 
 ```typescript
 server: {
@@ -475,6 +482,7 @@ Pages:
 | `mermaid-block.tsx` | Dynamic mermaid.js renderer |
 | `topic-page.tsx` | Dynamic route template for topics/$slug |
 | `deep-dive-page.tsx` | Dynamic route template for deep-dives/$slug |
+| `use-topic-content.ts` | Hook for fetching markdown content from URL at runtime |
 | `worker.ts` | Cloudflare Workers entry point (SSR + static assets) |
 | `wrangler.toml` | Cloudflare Workers deployment config |
 
@@ -488,7 +496,7 @@ Pages:
 | `project-index.tsx` | Project overview with topic/deep-dive card grids, wrapped in `<ProjectLayout>` |
 | `project-topic.tsx` | Topic page with markdown rendering + prev/next, wrapped in `<ProjectLayout>` |
 | `project-deepdive.tsx` | Deep dive page with markdown rendering + prev/next, wrapped in `<ProjectLayout>` |
-| `registry.ts` | Registry template (placeholder-based, needs dynamic generation) |
+| `registry.ts` | Registry template (placeholder-based, `?url` imports for small bundle) |
 
 ## Mermaid Syntax Rules
 
@@ -551,10 +559,12 @@ When writing or validating mermaid code blocks in `.md` files, follow these rule
 - The `shellComponent` pattern is required in `__root.tsx` (TanStack Start SSR)
 - Mermaid is loaded via dynamic `import('mermaid')` — do not import at top level
 - The `code` component in MarkdownRenderer must detect `className="language-mermaid"` to render MermaidBlock
-- All markdown files are imported at build time via Vite `?raw` — they are bundled into the client, no runtime file reading needed
+- All markdown files use Vite `?url` imports — content is NOT bundled into the Worker. Instead, `?url` returns a small URL string, and `useTopicContent` hook fetches the actual content at runtime from the ASSETS binding. This keeps the Worker bundle under Cloudflare's 3 MiB free plan limit (previously `?raw` was used which embedded all file content and caused 5+ MiB bundles)
 - Route file names with `$` like `$slug.tsx` are TanStack Router's dynamic segment syntax
 - In multi-project mode, `<ProjectLayout>` wraps each project page to provide the sidebar — no nested `__root.tsx` needed
-- Import paths in registry.ts must be relative to `site/src/lib/` → use `../../{projectName}/topics/{file}.md?raw`
+- Import paths in registry.ts must be relative to `site/src/lib/` → use `../../{projectName}/topics/{file}.md?url` (NOT `?raw`)
+- **`useTopicContent` hook** must be placed at `site/src/hooks/useTopicContent.ts` — all topic/deep-dive route components depend on it for async content loading. The hook fetches markdown from the URL returned by `?url` imports.
+- **Worker `isStaticAsset` must include `md` extension** — `.md` files are served as static assets via the ASSETS binding. Without this, content fetch requests would be routed to SSR instead of static assets.
 - **Cloudflare Workers deployment**: uses `wrangler` + `worker.ts` entry point. The worker serves static assets from `dist/client` via ASSETS binding, and SSR from `dist/server/server.js`. Requires `nodejs_compat` compatibility flag.
 - After scaffolding, install dev deps: `bun add -d wrangler @cloudflare/vite-plugin`
 - Deploy commands: `bun run build && bun run deploy`

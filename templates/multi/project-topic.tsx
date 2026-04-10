@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { getProject, getTopic } from '../../../../lib/registry'
 import MarkdownRenderer from '../../../../components/MarkdownRenderer'
 import ProjectLayout from '../../../../components/ProjectLayout'
+import { useTopicContent } from '../../../../hooks/useTopicContent'
 
 export const Route = createFileRoute('/project/$projectSlug/topics/$slug')({
   component: TopicPage,
@@ -11,6 +12,7 @@ function TopicPage() {
   const { projectSlug, slug } = Route.useParams()
   const project = getProject(projectSlug)
   const topic = getTopic(projectSlug, slug)
+  const { content, loading, error } = useTopicContent(topic?.url)
 
   if (!project || !topic) {
     return (
@@ -43,7 +45,17 @@ function TopicPage() {
           {topic.title}
         </div>
 
-        <MarkdownRenderer content={topic.content} />
+        {loading && (
+          <div className="prose" style={{ color: 'var(--fg-muted)', padding: '24px 0' }}>
+            Loading content...
+          </div>
+        )}
+        {error && (
+          <div className="prose" style={{ color: 'var(--accent)', padding: '24px 0' }}>
+            Failed to load content: {error}
+          </div>
+        )}
+        {!loading && !error && <MarkdownRenderer content={content} />}
 
         <nav className="page-nav">
           {prev ? (
