@@ -567,4 +567,4 @@ When writing or validating mermaid code blocks in `.md` files, follow these rule
 - **Worker `isStaticAsset` must include `md` extension** — `.md` files are served as static assets via the ASSETS binding. Without this, content fetch requests would be routed to SSR instead of static assets.
 - **Cloudflare Workers deployment**: uses `wrangler` + `worker.ts` entry point. The worker serves static assets from `dist/client` via ASSETS binding, and SSR from `dist/server/server.js`. Requires `nodejs_compat` compatibility flag.
 - After scaffolding, install dev deps: `bun add -d wrangler @cloudflare/vite-plugin`
-- Deploy commands: `bun run build && bun run deploy`
+- Build commands: `bun run build`
