@@ -1,11 +1,11 @@
 ---
 name: docs-site
-description: Scaffold a GitHub-styled TanStack Start documentation site for project analysis documents. Supports single-project and multi-project hub modes.
+description: Scaffold a GitHub-styled TanStack Start documentation site for project analysis documents. Multi-project hub mode with incremental update support.
 ---
 
 # Docs Site Skill
 
-Scaffold a GitHub-styled TanStack Start documentation site for project analysis documents. Supports two modes: **single project** and **multi-project hub**.
+Scaffold a GitHub-styled TanStack Start documentation site for project analysis documents. Creates a unified hub with per-project sidebar and incremental update support.
 
 ## When to Use
 
@@ -21,21 +21,46 @@ Use this skill when the user:
 
 - bun must be available on the system
 
-## Site Existence Guard (MANDATORY)
+## Flow Overview
 
-Before any scaffold or creation step, check if the target directory already contains a `site/` subdirectory:
+> Complete trigger, guard, and workflow decision flow.
+
+```mermaid
+flowchart TD
+    Trigger(["/docs-site triggered"]) --> Guard{"site/ exists?"}
+
+    Guard -->|"No"| Scan["Scan projects M1-M9"]
+    Guard -->|"Yes"| Marker{"Has marker file?"}
+
+    Marker -->|"Yes: our site"| U1["Find new/changed files<br/>via git status + git log"]
+    Marker -->|"No: foreign site"| Abort["STOP: report error<br/>do NOT overwrite"]
+
+    U1 --> U2{"Files outside<br/>topics/?"}
+    U2 -->|"Yes"| U2a["Move into topics/"]
+    U2 -->|"No"| U3
+    U2a --> U3["Incremental update<br/>registry.ts"]
+    U3 --> Build
+
+    Scan --> Build["Build"]
+
+    Build --> Done(["Done"])
+```
+
+## ⚠️ FIRST ACTION: Site Existence Guard (MANDATORY — NO EXCEPTIONS)
+
+**This check MUST run as the VERY FIRST STEP every time the skill is triggered, BEFORE any argument parsing or workflow execution. No step may proceed until this guard is resolved.**
+
+Check if the target directory already contains a `site/` subdirectory:
 
 ```bash
 test -d {target}/site && echo "EXISTS" || echo "NOT_EXISTS"
 ```
 
-### Rule
+### Decision Flow (STOP AT FIRST MATCH)
 
-| Condition | Action |
-|---|---|
-| `site/` does **NOT** exist | Proceed with normal creation workflow |
-| `site/` exists **AND** `site/package.json` contains `"docs-site-skill": true` in a custom field (or a `.docs-site-skill` marker file exists in `site/`) | This is **our** site — enter **Update Mode** (see "Existing Site Update Mode" below) |
-| `site/` exists **AND** no marker found | **STOP** — the target already has a site that was NOT created by this skill. Report error and abort. Do NOT overwrite. |
+1. **`site/` does NOT exist** → Proceed with normal creation workflow (scan, scaffold, etc.)
+2. **`site/` exists AND `.docs-site-skill` marker found** → **STOP. Do NOT scaffold. Enter Update Mode only.** (see "Existing Site Update Mode" below)
+3. **`site/` exists AND no marker found** → **STOP. Report error and abort. Do NOT overwrite.**
 
 ### Error message when site exists but is not ours
 
@@ -59,49 +84,33 @@ This site was scaffolded by the docs-site skill.
 
 This allows future runs to distinguish our sites from pre-existing ones.
 
-## Mode Detection
+### Key Rule: Never Rebuild Existing Sites
 
-The skill automatically detects which mode to use:
-
-| Condition | Mode |
-|---|---|
-| Target directory **is** an `ai-analysis-docs/` or similar single-project analysis dir | Single-project |
-| Target directory contains **multiple subdirectories**, each with `.md` files | Multi-project hub |
-| User passes `--multi` flag | Force multi-project |
-
-### Single-Project Mode
-
-The target has one project's analysis docs (e.g. `{project}/ai-analysis-docs/`). Creates one site for it.
-
-### Multi-Project Hub Mode
-
-The target is a parent directory containing **multiple project analysis directories** (e.g. `/code-analysi/` with `tokio/`, `k8s/`, `zinx/` etc.). Creates one unified site with:
-- A homepage listing all projects as cards
-- Each project gets its own section: `/project/{name}/`
-- Per-project sidebar with topic navigation
-- Cross-project search-friendly structure
+When `site/` already exists with our marker, the skill MUST:
+- **ONLY** enter Incremental Update Mode (detect changed files via git, move into topics/, update only affected entries in `registry.ts`, rebuild)
+- **NEVER** re-run `bunx create`, re-install deps, or overwrite components/styles
+- **NEVER** delete or replace the existing `site/` directory
+- **NEVER** re-scan all projects from scratch — only process new/changed `.md` files
 
 ---
 
 ## Arguments
 
 - Optional: target path (defaults to current working directory)
-- Optional: `--multi` to force multi-project mode
 - Optional: `--name "Site Name"` to override site title
-- Optional: `--only project1,project2,...` to include only specific projects (multi-project mode)
-- Optional: `--exclude project1,project2,...` to exclude specific projects (multi-project mode)
+- Optional: `--only project1,project2,...` to include only specific projects
+- Optional: `--exclude project1,project2,...` to exclude specific projects
 
 Example invocations:
-- `/docs-site` (auto-detect mode)
-- `/docs-site /path/to/project/ai-analysis-docs`
-- `/docs-site /path/to/code-analysi --multi`
-- `/docs-site /path/to/code-analysi --multi --only tokio,k8s,zinx`
-- `/docs-site /path/to/code-analysi --multi --exclude resume,stock`
+- `/docs-site` (scan current directory)
+- `/docs-site /path/to/code-analysi`
+- `/docs-site /path/to/code-analysi --only tokio,k8s,zinx`
+- `/docs-site /path/to/code-analysi --exclude resume,stock`
 - `/docs-site /path/to/code-analysi --name "Code Analysis Hub"`
 
-### Exclusion Rules (Multi-Project Mode)
+### Exclusion Rules
 
-When scanning directories in multi-project mode, apply these rules to decide which projects to **include**:
+When scanning directories, apply these rules to decide which projects to **include**:
 
 **1. Command-line filtering** (`--only` / `--exclude`):
 - If `--only` is provided: **only** include projects whose directory name matches one of the listed names
@@ -109,7 +118,7 @@ When scanning directories in multi-project mode, apply these rules to decide whi
 - If both are provided: `--only` takes precedence (ignore `--exclude`)
 
 **2. Always exclude** (hardcoded skip list):
-- `node_modules`, `site`, `.git`, `.claude`, `.vscode`, `.idea`, `.tanstack`, `.wrangler`
+- `node_modules`, `site`, `.git`, `.claude`, `.vscode`, `.idea`
 - Hidden directories (starting with `.`)
 - `assets`, `dist`, `build`, `out`, `public`
 - Directories with **zero** `.md` files (neither in root nor in `topics/`)
@@ -135,83 +144,95 @@ Proceed with these {count} projects? [Y/n]
 
 This ensures the user has a chance to review and adjust before the site is generated.
 
-### Existing Site Update Mode
+### Existing Site Update Mode (Incremental)
 
 When the user runs `/docs-site` on a target directory that **already has a `site/` directory with the `.docs-site-skill` marker**, enter **update mode** instead of re-scaffolding from scratch.
 
 **Detection**: Check if `{target}/site/.docs-site-skill` exists. If yes → update mode. If `site/` exists but no marker → see "Site Existence Guard" error and abort.
 
+**Core principle: incremental update, not full rebuild.** Only process files that are new or changed since last build. Do NOT re-scan everything.
+
 **What update mode does**:
 
-1. **Re-scan** all project directories with current exclusion rules (including any new `--exclude` / `--only` flags)
-2. **Compare** with the current `site/src/lib/registry.ts`:
-   - Projects newly **included** (were excluded before, or new directories added since last build): add to registry
-   - Projects newly **excluded** (removed by `--exclude` flag, or directory deleted): remove from registry
-   - Projects **unchanged**: keep as-is, but re-check for new/removed `.md` files in `topics/`
-3. **Regenerate** `site/src/lib/registry.ts` with the updated project list
-4. **Rebuild** and **deploy**:
+1. **Discover changed files** using git:
    ```bash
-   cd site && bun run build && bun run deploy
+   %% Uncommitted (unstaged + staged)
+   git status --porcelain -- '*.md'
+   %% Recently committed (last build timestamp from marker file or git log)
+   git log --diff-filter=A --name-only --pretty=format: --since="<last-build-time>" -- '*.md'
+   ```
+   Collect all new/modified `.md` files from both sources.
+
+2. **Normalize locations** — for each changed file found above:
+   - If the file is inside a project directory but **NOT** inside `topics/` (e.g. sitting in project root):
+     - Move it into `{project}/topics/` (unless it's an excluded file: `changelog.md`, `analysis-todo.md`, `*-analysis.md`, `*-progress-tracking.md`, `README.md`)
+     - Report: `Moved {file} → {project}/topics/`
+   - If the file is already inside `topics/` → no move needed
+
+3. **Incrementally update `registry.ts`**:
+   - Parse existing `site/src/lib/registry.ts` to get current state
+   - For each **new** `.md` file: read its H1 heading, generate slug, add import + entry to the correct project's topic list
+   - For each **removed** `.md` file (deleted from disk): remove its import + entry from registry
+   - **Do NOT regenerate the entire file** — only add/remove the affected entries
+   - Re-number `order` fields for the affected project if needed
+   - Ensure slug uniqueness within each project (append suffix on collision)
+
+4. **Rebuild** to verify:
+   ```bash
+   cd site && bun run build
    ```
 5. Report what changed:
    ```
-   Updated existing site.
+   Updated existing site (incremental).
 
    Changes:
-     + added:      golang (3 topics)
-     - removed:    resume, stock
-     ~ updated:    zinx (2 new topics found)
-     = unchanged:  14 projects
+     + added:    tokio/topics/07-async-scheduler.md
+     + added:    zinx/topics/deep-dive-graceful-shutdown.md
+     ~ moved:    k8s/05-crd.md → k8s/topics/05-crd.md
+     - removed:  stock/topics/01-overview.md
 
-   Rebuilt and deployed.
+   Registry updated, build succeeded.
    ```
 
 **What update mode does NOT do**:
 - Does NOT re-run `bunx create site` (scaffold)
 - Does NOT re-install dependencies
 - Does NOT overwrite `styles.css`, `Header.tsx`, `Footer.tsx`, or other custom components
-- Does NOT touch `wrangler.toml`, `worker.ts`, or `vite.config.ts`
 - Does NOT reset any user customizations
+- Does NOT re-scan all projects from scratch — only processes git-detected changes
 
 **Key rule**: The user may have manually edited styles, components, or config after the initial scaffold. Update mode only touches `registry.ts` — everything else is left alone.
 
 ---
 
-## Workflow: Single-Project Mode
+## Workflow
 
-### S1. Discover & Normalize
+> Detailed step-by-step creation workflow (M1-M9).
 
-0. **Run the Site Existence Guard** (see "Site Existence Guard" section above). If `site/` already exists without our marker, report error and stop. If `site/` exists with our marker, enter Update Mode. Only proceed with the steps below if no `site/` exists.
+```mermaid
+flowchart TD
+    M1["M1. Scan & Filter projects"] --> M1b["Normalize .md into topics/"]
+    M1b --> M1c["Extract titles & categorize"]
+    M1c --> Confirm{"User confirms?"}
+    Confirm -->|"Yes"| M2
+    Confirm -->|"No"| Stop(["Stop"])
 
-1. Locate the analysis directory. If not found, report error and stop
-2. **Normalize directory structure** — check if `topics/` exists:
-   - If `topics/` does NOT exist:
-     a. Create `mkdir topics`
-     b. Move all analysis topic `.md` files into `topics/`. The files to move are those that are clearly topic documents (numbered like `01-*.md`, `02-*.md`, ..., or named `deep-dive-*.md`). **Do NOT move** the following files — they stay in root:
-        - `changelog.md`
-        - `analysis-todo.md`
-        - `*-analysis.md`
-        - `*-progress-tracking.md`
-        - Any non-`.md` files or directories (e.g., `assets/`)
-     c. Report what was moved
-3. List all `.md` files in `topics/`
-4. Read each file's first `# ` heading to extract titles
-5. Group files: **Core** (`NN-*.md`), **Deep Dives** (`deep-dive-*.md`), **Other** (rest)
-6. Read main analysis file for project description
+    M2["M2. Scaffold TanStack Start"] --> M2b["Remove site/.git + write marker"]
+    M2b --> M3["M3. Install dependencies"]
+    M3 --> M4["M4. Create route structure"]
+    M4 --> M5["M5. Generate registry.ts"]
+    M5 --> M6["M6. Copy route templates"]
+    M6 --> M7["M7. Copy shared components"]
+    M7 --> M8["M8. Configure Cloudflare Workers"]
+    M8 --> M9["M9. Build & verify"]
+    M9 -->|"Success"| Done(["Done"])
+    M9 -->|"Fail"| Fix["Fix and retry"]
+    Fix --> M9
+```
 
-### S2–S7. Build Site
+### M1. Scan Projects & Normalize
 
-Follow Steps 2–7 from the previous single-project workflow (Scaffold, Install, Create Files, Generate topics.ts, Copy Styles, Configure Cloudflare Deployment, Verify).
-
-The Cloudflare deployment configuration is the same for both modes — see steps M8a–M8e in the multi-project workflow below.
-
----
-
-## Workflow: Multi-Project Hub Mode
-
-### M1. Site Existence Check & Scan
-
-0. **Run the Site Existence Guard** (see "Site Existence Guard" section above). If `site/` already exists without our marker, report error and stop. If `site/` exists with our marker, enter Update Mode. Only proceed with the steps below if no `site/` exists.
+0. **Run the Site Existence Guard** (see "⚠️ FIRST ACTION: Site Existence Guard" section above). This is MANDATORY and must happen before anything else. Only proceed with the steps below if the guard returns "site/ does NOT exist".
 
 1. List all subdirectories in the target path. Apply the **Exclusion Rules** from the Arguments section (always-skip dirs, `--only`/`--exclude` flags, minimum content threshold)
 2. For each project directory that passes filtering:
@@ -288,11 +309,15 @@ src/
 
 This file is **generated dynamically** and is the core of the hub. For each project and each `.md` file within it, generate:
 
-1. Import statements using Vite `?url` suffix (NOT `?raw` — `?raw` embeds full file content and causes Cloudflare Worker bundle to exceed 3 MiB limit), with paths relative to `site/src/lib/`:
+1. Import statements using Vite `?url` suffix (NOT `?raw` — `?raw` embeds full file content and causes large bundles), with paths relative to `site/src/lib/`. `?url` returns only the asset URL string (~50 bytes); markdown content is loaded at runtime via `useTopicContent` hook.
+   **Import names MUST include the project slug as prefix** to avoid collisions across projects:
    ```
-   import proj_tokio_topic_01 from '../../tokio/topics/01-overview.md?url'
+   import md_tokio_1 from '../../tokio/topics/01-overview.md?url'
+   import md_tokio_2 from '../../tokio/topics/02-architecture.md?url'
+   import md_codex_1 from '../../codex/topics/01-intro.md?url'
+   import md_codex_2 from '../../codex/topics/02-project-structure.md?url'
    ```
-   `?url` returns only the asset URL string (~50 bytes) instead of the full file content (~10-50 KB). Markdown content is loaded at runtime via `useTopicContent` hook.
+   Naming pattern: `md_{projectSlug}_{sequentialNumber}` — the project slug prefix ensures every import name is globally unique.
 
 2. Extract titles at generation time by reading each `.md` file's H1 heading. Titles are hardcoded in the registry — NOT extracted at runtime.
 
@@ -336,28 +361,25 @@ export function getProject(slug: string): ProjectMeta | undefined { ... }
 export function getTopic(projectSlug: string, topicSlug: string): TopicMeta | undefined { ... }
 ```
 
-### M6. Key Route Templates
+### M6. Copy Route Templates
 
-All templates for multi-project mode are in `~/.claude/skills/docs-site/templates/multi/`.
-
-| Template | Purpose |
-|---|---|
-| `hub-root.tsx` | `__root.tsx` — no sidebar, just header + hub-main + footer |
-| `hub-index.tsx` | `index.tsx` — project card grid with name + description + topic count |
-| `ProjectLayout.tsx` | Component wrapping sidebar + main area, uses `useParams({ strict: false })` |
-| `project-index.tsx` | `project/$projectSlug/index.tsx` — overview wrapped in `<ProjectLayout>` |
-| `project-topic.tsx` | `project/$projectSlug/topics/$slug.tsx` — markdown + prev/next, wrapped in `<ProjectLayout>` |
-| `project-deepdive.tsx` | `project/$projectSlug/deep-dives/$slug.tsx` — markdown + prev/next, wrapped in `<ProjectLayout>` |
+Copy from `templates/multi/` (see "Route Templates" table below for details):
+- `hub-root.tsx` → `site/src/routes/__root.tsx`
+- `hub-index.tsx` → `site/src/routes/index.tsx`
+- `ProjectLayout.tsx` → `site/src/components/ProjectLayout.tsx`
+- `project-index.tsx` → `site/src/routes/project/$projectSlug/index.tsx`
+- `project-topic.tsx` → `site/src/routes/project/$projectSlug/topics/$slug.tsx`
+- `project-deepdive.tsx` → `site/src/routes/project/$projectSlug/deep-dives/$slug.tsx`
 
 ### M7. Copy Shared Components
 
-These are shared with single-project mode — copy from `templates/`:
+Copy from `templates/`:
 - `styles.css`, `header.tsx`, `footer.tsx`, `markdown-renderer.tsx`, `mermaid-block.tsx`, `theme-toggle.tsx`
 
 Additionally, copy the async content loading hook to `site/src/hooks/`:
 - `use-topic-content.ts` → `site/src/hooks/useTopicContent.ts`
 
-### M8. Configure Cloudflare Workers Deployment
+### M8. Configure Cloudflare Workers
 
 #### M8a. Install Cloudflare dependencies
 
@@ -431,22 +453,16 @@ server: {
 },
 ```
 
-### M9. Verify & Deploy
+### M9. Build & Verify
 
 ```bash
 cd site && bun run build
 ```
 
-If build succeeds, deploy:
-
-```bash
-cd site && bun run deploy
-```
-
 Report result:
 
 ```
-Multi-project docs site created!
+Docs site created!
 
 Projects ({count}):
   - tokio: {N} topics, {M} deep dives
@@ -455,7 +471,7 @@ Projects ({count}):
 
 Start:   cd site && bun run dev
 Build:   cd site && bun run build
-Deploy:  cd site && bun run deploy
+Deploy:  cd site && bun run deploy  (manual)
 
 Pages:
   - /                            Hub homepage
@@ -468,25 +484,22 @@ Pages:
 
 ## Template Files
 
-### Single-Project Templates (`~/.claude/skills/docs-site/templates/`)
+### Shared Components (`~/.claude/skills/docs-site/templates/`)
 
 | File | Purpose |
 |---|---|
 | `styles.css` | GitHub-style theme (light + dark) |
-| `__root.tsx` | Root layout with header, sidebar, main content, footer |
-| `index.tsx` | Homepage with project name, description, card grid |
 | `header.tsx` | Sticky header with logo and theme toggle |
 | `footer.tsx` | Simple footer |
 | `sidebar.tsx` | Left sidebar with grouped navigation links |
 | `markdown-renderer.tsx` | react-markdown + remark-gfm + mermaid code block detection |
 | `mermaid-block.tsx` | Dynamic mermaid.js renderer |
-| `topic-page.tsx` | Dynamic route template for topics/$slug |
-| `deep-dive-page.tsx` | Dynamic route template for deep-dives/$slug |
+| `theme-toggle.tsx` | Dark/light theme switcher |
 | `use-topic-content.ts` | Hook for fetching markdown content from URL at runtime |
 | `worker.ts` | Cloudflare Workers entry point (SSR + static assets) |
 | `wrangler.toml` | Cloudflare Workers deployment config |
 
-### Multi-Project Templates (`~/.claude/skills/docs-site/templates/multi/`)
+### Route Templates (`~/.claude/skills/docs-site/templates/multi/`)
 
 | File | Purpose |
 |---|---|
@@ -553,18 +566,10 @@ When writing or validating mermaid code blocks in `.md` files, follow these rule
 ## Important Notes
 
 - Always use **bun**, never npm
-- **Never initialize `.git` inside `site/`** — the target directory (e.g. `~/ai/code-analysi/`) is already a git repository. The TanStack CLI scaffold may create `site/.git`; always remove it (`rm -rf site/.git`) after scaffolding. A nested `.git` creates a submodule conflict.
-- **Topic slugs must be unique and non-empty** within each project. When generating `registry.ts`, deduplicate slugs by appending descriptive suffixes (e.g. `MongoDB-sharding`). Empty slugs must be replaced with a slug derived from the title. Duplicate/empty slugs break `getTopic()` (only returns first match) and cause React key warnings.
-- **Use `key={topic.order}` (not `key={topic.slug}`)** in all `.map()` lists — `order` is always unique per topic within a project, while slug uniqueness is enforced at generation time but `order` is the safer key
-- The `shellComponent` pattern is required in `__root.tsx` (TanStack Start SSR)
+- **Never initialize `.git` inside `site/`** — the target directory is already a git repo. Remove `site/.git` after scaffolding to avoid submodule conflict.
+- **Topic slugs must be unique and non-empty** within each project. Deduplicate by appending suffixes (e.g. `MongoDB-sharding`). Duplicate/empty slugs break `getTopic()` and URL routing.
+- **Use `key={topic.order}` (not `key={topic.slug}`)** in all `.map()` lists
+- `shellComponent` pattern is required in `__root.tsx` (TanStack Start SSR)
 - Mermaid is loaded via dynamic `import('mermaid')` — do not import at top level
-- The `code` component in MarkdownRenderer must detect `className="language-mermaid"` to render MermaidBlock
-- All markdown files use Vite `?url` imports — content is NOT bundled into the Worker. Instead, `?url` returns a small URL string, and `useTopicContent` hook fetches the actual content at runtime from the ASSETS binding. This keeps the Worker bundle under Cloudflare's 3 MiB free plan limit (previously `?raw` was used which embedded all file content and caused 5+ MiB bundles)
 - Route file names with `$` like `$slug.tsx` are TanStack Router's dynamic segment syntax
-- In multi-project mode, `<ProjectLayout>` wraps each project page to provide the sidebar — no nested `__root.tsx` needed
-- Import paths in registry.ts must be relative to `site/src/lib/` → use `../../{projectName}/topics/{file}.md?url` (NOT `?raw`)
-- **`useTopicContent` hook** must be placed at `site/src/hooks/useTopicContent.ts` — all topic/deep-dive route components depend on it for async content loading. The hook fetches markdown from the URL returned by `?url` imports.
-- **Worker `isStaticAsset` must include `md` extension** — `.md` files are served as static assets via the ASSETS binding. Without this, content fetch requests would be routed to SSR instead of static assets.
-- **Cloudflare Workers deployment**: uses `wrangler` + `worker.ts` entry point. The worker serves static assets from `dist/client` via ASSETS binding, and SSR from `dist/server/server.js`. Requires `nodejs_compat` compatibility flag.
-- After scaffolding, install dev deps: `bun add -d wrangler @cloudflare/vite-plugin`
-- Build commands: `bun run build`
+- Deploy is manual: `cd site && bun run deploy`
