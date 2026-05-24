@@ -125,7 +125,7 @@ When scanning directories, apply these rules to decide which projects to **inclu
 
 **3. Minimum content threshold**:
 - A directory must have **at least 1** `.md` file in `topics/` (after normalization) to be included
-- If a directory has `.md` files but they are all excluded files (`changelog.md`, `*-analysis.md`, `*-progress-tracking.md`, `analysis-todo.md`, `README.md`), it is excluded
+- If a directory has `.md` files but they are all `README.md`, it is excluded
 
 **4. Confirmation prompt**:
 After scanning and filtering, show the user the final project list with document counts and ask for confirmation before proceeding. Format:
@@ -165,7 +165,7 @@ When the user runs `/docs-site` on a target directory that **already has a `site
 
 2. **Normalize locations** — for each changed file found above:
    - If the file is inside a project directory but **NOT** inside `topics/` (e.g. sitting in project root):
-     - Move it into `{project}/topics/` (unless it's an excluded file: `changelog.md`, `analysis-todo.md`, `*-analysis.md`, `*-progress-tracking.md`, `README.md`)
+     - Move it into `{project}/topics/`
      - Report: `Moved {file} → {project}/topics/`
    - If the file is already inside `topics/` → no move needed
 
@@ -237,9 +237,7 @@ flowchart TD
 1. List all subdirectories in the target path. Apply the **Exclusion Rules** from the Arguments section (always-skip dirs, `--only`/`--exclude` flags, minimum content threshold)
 2. For each project directory that passes filtering:
    a. Create `mkdir {project}/topics`
-   b. Move all `.md` files from project root into `topics/`, **EXCEPT**:
-      - `changelog.md`, `analysis-todo.md`, `*-analysis.md`, `*-progress-tracking.md`
-      - `README.md` (if it's a generic README)
+   b. Move all `.md` files from project root into `topics/`, **EXCEPT** `README.md` (if it's a generic README)
    c. Report what was moved
    d. Scan `topics/` and extract title from first `# ` heading of each file
    e. Categorize: core (`NN-*.md`), deep-dives (`deep-dive-*.md`), other
